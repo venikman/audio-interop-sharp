@@ -219,6 +219,30 @@ fast-text-area::part(control) {
     resize: vertical;
 }
 
+fast-button::part(control):focus-visible,
+fast-text-field::part(control):focus-visible,
+fast-text-area::part(control):focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+.nav-scrollable .nav-item .nav-link:focus-visible {
+    outline: 2px solid var(--accent-cool);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgba(33, 185, 197, 0.3);
+}
+
+@supports not selector(:focus-visible) {
+    fast-button::part(control):focus,
+    fast-text-field::part(control):focus,
+    fast-text-area::part(control):focus,
+    input:focus,
+    textarea:focus,
+    .nav-scrollable .nav-item .nav-link:focus {
+        outline: 2px solid var(--accent-cool);
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(33, 185, 197, 0.3);
+    }
+}
+
 .button-row {
     display: flex;
     flex-wrap: wrap;
