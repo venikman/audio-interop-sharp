@@ -132,6 +132,19 @@ window.audioRecorder = (() => {
     return { base64, contentType: blob.type || "audio/wav" };
   };
 
+  const parseJsonResponse = (responseText, context) => {
+    if (!responseText || !responseText.trim()) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(responseText);
+    } catch {
+      const responseSummary = responseText || "<empty>";
+      throw new Error(`Failed to parse server response in ${context}. Response: ${responseSummary}`);
+    }
+  };
+
   const stopAndProcess = async (subjectReference, subjectDisplay) => {
     const blob = await stopInternal();
     if (!blob) {
@@ -172,7 +185,12 @@ window.audioRecorder = (() => {
       throw new Error(message);
     }
 
-    return JSON.parse(responseText);
+    const parsedResponse = parseJsonResponse(responseText, "stopAndProcess");
+    if (!parsedResponse) {
+      throw new Error("Audio processing returned an empty response.");
+    }
+
+    return parsedResponse;
   };
 
   const blobToBase64 = (blob) =>
