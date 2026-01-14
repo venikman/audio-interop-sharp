@@ -6,8 +6,8 @@ public sealed class AiUsageTelemetry : IAiUsageTelemetry
 {
     private const int MaxEvents = 8;
     private readonly object _sync = new();
-    private UsageCounterData _audio = new();
-    private UsageCounterData _text = new();
+    private readonly UsageCounterData _audio = new();
+    private readonly UsageCounterData _text = new();
     private readonly List<AiTelemetryEvent> _events = [];
 
     public event Action? Changed;
@@ -30,16 +30,16 @@ public sealed class AiUsageTelemetry : IAiUsageTelemetry
 
     public void RecordAudioTranscription(string provider, string model, bool success, TimeSpan duration)
     {
-        Record(ref _audio, provider, model, success, duration, "Audio");
+        Record(_audio, provider, model, success, duration, "Audio");
     }
 
     public void RecordTextCompletion(string provider, string model, bool success, TimeSpan duration)
     {
-        Record(ref _text, provider, model, success, duration, "Text");
+        Record(_text, provider, model, success, duration, "Text");
     }
 
     private void Record(
-        ref UsageCounterData counter,
+        UsageCounterData counter,
         string provider,
         string model,
         bool success,
