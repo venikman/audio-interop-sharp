@@ -6,6 +6,7 @@
     "watch:css": "tailwindcss -c tailwind.config.js -i ./src/AudioSharp.App/Styles/app.css -o ./src/AudioSharp.App/wwwroot/app.css --watch"
   },
   "devDependencies": {
-    "tailwindcss": "3.4.15"
+    "@tailwindcss/cli": "4.1.18",
+    "tailwindcss": "4.1.18"
   }
 }
