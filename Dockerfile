@@ -21,6 +21,5 @@ FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS final
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
-COPY --from=build /root/.nuget/packages/microsoft.aspnetcore.app.internal.assets /root/.nuget/packages/microsoft.aspnetcore.app.internal.assets
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "AudioSharp.App.dll"]
