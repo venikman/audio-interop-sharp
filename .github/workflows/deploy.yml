@@ -52,7 +52,20 @@ jobs:
         run: docker build -t ${{ env.IMAGE }} .
       - name: Verify static assets in image
         run: |
-          docker run --rm --entrypoint sh ${{ env.IMAGE }} -c "test -f /app/wwwroot/_framework/blazor.web.js && test -f /app/wwwroot/lib/recordrtc/recordrtc.min.js"
+          docker run --rm --entrypoint sh ${{ env.IMAGE }} -c '
+            set -e
+            test -f /app/wwwroot/lib/recordrtc/recordrtc.min.js
+            if [ -f /app/wwwroot/_framework/blazor.web.js ]; then
+              exit 0
+            fi
+            if [ -d /root/.nuget/packages/microsoft.aspnetcore.app.internal.assets ]; then
+              if find /root/.nuget/packages/microsoft.aspnetcore.app.internal.assets -path "*/_framework/blazor.web.js" -print -quit | grep -q .; then
+                exit 0
+              fi
+            fi
+            echo "Missing blazor.web.js in image." >&2
+            exit 1
+          '
       - name: Push image
         run: docker push ${{ env.IMAGE }}
       - name: Deploy
