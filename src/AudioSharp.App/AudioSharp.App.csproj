@@ -22,7 +22,11 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
   </ItemGroup>
 
-  <Target Name="CopyRecordRtc" BeforeTargets="Build">
+  <Target Name="EnsureFrontendDependencies" BeforeTargets="Build;Publish">
+    <Exec Command="npm ci" WorkingDirectory="$(RepositoryRoot)" Condition="!Exists('$(RepositoryRoot)/node_modules')" />
+  </Target>
+
+  <Target Name="CopyRecordRtc" BeforeTargets="Build;Publish" DependsOnTargets="EnsureFrontendDependencies">
     <Message Condition="!Exists('$(RecordRtcSource)')" Importance="High"
              Text="RecordRTC asset missing at $(RecordRtcSource). Run npm ci to restore frontend assets." />
     <Error Condition="'$(CI)' == 'true' And !Exists('$(RecordRtcSource)')"
@@ -37,7 +41,6 @@
 
   <Target Name="PrepareFrontendAssets" BeforeTargets="Publish" DependsOnTargets="CopyRecordRtc">
     <Message Importance="high" Text="Preparing frontend assets..." />
-    <Exec Command="npm ci" WorkingDirectory="$(RepositoryRoot)" Condition="!Exists('$(RepositoryRoot)/node_modules')" />
     <Exec Command="npm run build:css" WorkingDirectory="$(RepositoryRoot)"
           Condition="'$(SkipTailwindCss)' != 'true'" />
   </Target>

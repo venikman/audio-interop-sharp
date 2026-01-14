@@ -212,6 +212,7 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 app.UseAntiforgery();
 
@@ -324,9 +325,8 @@ static async Task<IResult> ProcessAudioAsync(
     }
 }
 
-if (app.Environment.IsDevelopment())
+using (var scope = app.Services.CreateScope())
 {
-    using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<ConcernsDbContext>();
     await dbContext.Database.EnsureCreatedAsync().ConfigureAwait(false);
 }
