@@ -22,7 +22,7 @@ public sealed class ConcernRepository : IConcernRepository
     {
         return await _dbContext.ConcernRecords
             .AsNoTracking()
-            .OrderByDescending(record => record.CreatedAtUtc)
+            .OrderByDescending(record => record.CreatedAtUtc.UtcDateTime)
             .Take(count)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
