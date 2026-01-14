@@ -14,6 +14,7 @@ env:
   SERVICE_NAME: audiosharp
   AR_REPO: audiosharp
   IMAGE_NAME: audiosharp
+  OPENROUTER_API_KEY_SECRET: openrouter-api-key
 
 jobs:
   deploy:
@@ -57,4 +58,5 @@ jobs:
             --image ${{ env.IMAGE }} \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
-            --set-env-vars LlmProvider__TextProvider=OpenRouter,OPENROUTER_TEXT_MODEL=google/gemini-2.5-flash-lite,OPENROUTER_AUDIO_MODEL=google/gemini-2.5-flash-lite,OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+            --set-env-vars LlmProvider__TextProvider=OpenRouter,OPENROUTER_TEXT_MODEL=google/gemini-2.5-flash-lite,OPENROUTER_AUDIO_MODEL=google/gemini-2.5-flash-lite \
+            --set-secrets OPENROUTER_API_KEY=$OPENROUTER_API_KEY_SECRET:latest

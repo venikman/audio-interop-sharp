@@ -20,6 +20,7 @@ public sealed class FhirObservationMapper : IFhirObservationMapper
         DateTimeOffset recordedAt)
     {
         ArgumentNullException.ThrowIfNull(concerns);
+        ArgumentNullException.ThrowIfNull(context);
 
         var observations = new List<FhirObservation>();
         foreach (var concern in concerns)

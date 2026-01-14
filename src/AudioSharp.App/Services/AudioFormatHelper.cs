@@ -9,7 +9,13 @@ public static class AudioFormatHelper
             return "wav";
         }
 
-        var normalized = contentType.Split(';', StringSplitOptions.RemoveEmptyEntries)[0]
+        var parts = contentType.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return "wav";
+        }
+
+        var normalized = parts[0]
             .Trim()
             .ToLowerInvariant();
 

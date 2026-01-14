@@ -217,7 +217,7 @@
             {
                 <div class="recent-card">
                     <div class="recent-title">@record.CreatedAtUtc.ToLocalTime().ToString("g")</div>
-                    <div class="recent-subtitle">@record.SubjectDisplay ?? record.SubjectReference ?? "Unknown subject"</div>
+                    <div class="recent-subtitle">@(record.SubjectDisplay ?? record.SubjectReference ?? "Unknown subject")</div>
                 </div>
             }
         </div>
@@ -225,8 +225,6 @@
 }
 
 @code {
-    private const long MaxAudioBytes = 25 * 1024 * 1024;
-
     private string SubjectReference { get; set; } = string.Empty;
     private string SubjectDisplay { get; set; } = string.Empty;
     private string Transcript { get; set; } = string.Empty;
@@ -251,6 +249,7 @@
     private bool IsFhirConfigured => !string.IsNullOrWhiteSpace(FhirServerOptions.Value.BaseUrl);
     private bool CanSendToFhir => IsFhirConfigured && !IsProcessing && !IsSendingToFhir && !string.IsNullOrWhiteSpace(BundleJson);
     private int MaxRecordingSeconds => RecordingOptions.Value.MaxSeconds;
+    private long MaxAudioBytes => RecordingOptions.Value.MaxAudioBytes;
     private bool CanGenerateFollowUps => !IsProcessing && !IsRecording && Concerns.Count > 0;
     private bool CanApplyFollowUps =>
         !IsProcessing && !IsRecording && FollowUpEntries.Any(entry => !string.IsNullOrWhiteSpace(entry.Answer));
@@ -614,16 +613,11 @@
             var result = await FhirServerClient
                 .UploadBundleAsync(BundleJson, CancellationToken.None);
 
-            if (result.Success)
-            {
-                FhirStatusMessage = string.IsNullOrWhiteSpace(result.Location)
+            FhirStatusMessage = result.Success
+                ? (string.IsNullOrWhiteSpace(result.Location)
                     ? "FHIR server accepted the bundle."
-                    : $"FHIR server accepted the bundle: {result.Location}";
-            }
-            else
-            {
-                FhirStatusMessage = $"FHIR server returned {result.StatusCode}.";
-            }
+                    : $"FHIR server accepted the bundle: {result.Location}")
+                : $"FHIR server returned {result.StatusCode}.";
         }
         catch (Exception ex)
         {

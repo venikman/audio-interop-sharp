@@ -13,6 +13,27 @@ window.audioRecorder = (() => {
   let inputSampleRate = 0;
   let isRecording = false;
   let options = { ...defaultOptions };
+  let usingAudioWorklet = false;
+  let antiforgeryToken = null;
+
+  const getAntiforgeryToken = async () => {
+    if (antiforgeryToken) {
+      return antiforgeryToken;
+    }
+
+    const response = await fetch("/api/antiforgery/token", {
+      method: "GET",
+      credentials: "same-origin"
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to get antiforgery token.");
+    }
+
+    const payload = await response.json();
+    antiforgeryToken = payload.token;
+    return antiforgeryToken;
+  };
 
   const start = async (customOptions = {}) => {
     if (isRecording) {
@@ -45,17 +66,47 @@ window.audioRecorder = (() => {
     inputSampleRate = audioContext.sampleRate;
 
     source = audioContext.createMediaStreamSource(stream);
-    processor = audioContext.createScriptProcessor(4096, options.channelCount, options.channelCount);
     buffers = [];
+    usingAudioWorklet = false;
 
-    processor.onaudioprocess = (event) => {
-      if (!isRecording) {
-        return;
+    if (audioContext.audioWorklet) {
+      try {
+        await audioContext.audioWorklet.addModule("/js/audio-capture-worklet.js");
+        processor = new AudioWorkletNode(audioContext, "audio-capture-processor", {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          channelCount: options.channelCount
+        });
+        processor.port.onmessage = (event) => {
+          if (!isRecording) {
+            return;
+          }
+
+          const data = event.data;
+          if (data instanceof Float32Array) {
+            buffers.push(data);
+          } else if (data && data.buffer) {
+            buffers.push(new Float32Array(data));
+          }
+        };
+        processor.port.postMessage({ command: "start" });
+        usingAudioWorklet = true;
+      } catch (error) {
+        console.warn("AudioWorklet failed, falling back to ScriptProcessor.", error);
       }
+    }
 
-      const channelData = event.inputBuffer.getChannelData(0);
-      buffers.push(new Float32Array(channelData));
-    };
+    if (!processor) {
+      processor = audioContext.createScriptProcessor(4096, options.channelCount, options.channelCount);
+      processor.onaudioprocess = (event) => {
+        if (!isRecording) {
+          return;
+        }
+
+        const channelData = event.inputBuffer.getChannelData(0);
+        buffers.push(new Float32Array(channelData));
+      };
+    }
 
     zeroGain = audioContext.createGain();
     zeroGain.gain.value = 0;
@@ -77,7 +128,12 @@ window.audioRecorder = (() => {
 
     if (processor) {
       processor.disconnect();
-      processor.onaudioprocess = null;
+      if (usingAudioWorklet && processor.port) {
+        processor.port.postMessage({ command: "stop" });
+        processor.port.onmessage = null;
+      } else {
+        processor.onaudioprocess = null;
+      }
     }
 
     if (source) {
@@ -137,9 +193,13 @@ window.audioRecorder = (() => {
       formData.append("subjectDisplay", subjectDisplay);
     }
 
+    const token = await getAntiforgeryToken();
     const response = await fetch("/api/audio/process", {
       method: "POST",
       body: formData,
+      headers: {
+        "X-CSRF-TOKEN": token
+      },
       credentials: "same-origin"
     });
 
@@ -166,6 +226,7 @@ window.audioRecorder = (() => {
     zeroGain = null;
     buffers = [];
     inputSampleRate = 0;
+    usingAudioWorklet = false;
   };
 
   const mergeBuffers = (bufferList, totalLength) => {

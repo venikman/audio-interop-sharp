@@ -8,8 +8,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
+COPY ["AudioSharp.slnx", "./"]
 COPY ["src/AudioSharp.App/AudioSharp.App.csproj", "src/AudioSharp.App/"]
-RUN dotnet restore "src/AudioSharp.App/AudioSharp.App.csproj"
+COPY ["tests/AudioSharp.App.Tests/AudioSharp.App.Tests.csproj", "tests/AudioSharp.App.Tests/"]
+RUN dotnet restore "AudioSharp.slnx"
 
 COPY . .
 WORKDIR /src/src/AudioSharp.App

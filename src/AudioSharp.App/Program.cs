@@ -6,6 +6,7 @@ using AudioSharp.App.Data;
 using AudioSharp.App.Models;
 using AudioSharp.App.Options;
 using AudioSharp.App.Services;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+});
 
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -125,7 +131,7 @@ builder.Services.AddSingleton(new JsonSerializerOptions(JsonSerializerDefaults.W
 {
     PropertyNameCaseInsensitive = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    WriteIndented = true,
+    WriteIndented = builder.Environment.IsDevelopment(),
     Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
 });
 
@@ -186,6 +192,12 @@ builder.Services.AddHttpClient("FhirServer", (serviceProvider, client) =>
         var baseUrl = EnsureTrailingSlash(options.BaseUrl);
         client.BaseAddress = new Uri(baseUrl);
     }
+    else
+    {
+        var logger = serviceProvider.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("FhirServer");
+        logger.LogWarning("FHIR server base URL is not configured; FHIR uploads will be disabled.");
+    }
     client.Timeout = TimeSpan.FromMinutes(2);
 });
 
@@ -207,8 +219,14 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
+app.MapGet("/api/antiforgery/token", (IAntiforgery antiforgery, HttpContext context) =>
+    {
+        var tokens = antiforgery.GetAndStoreTokens(context);
+        return TypedResults.Ok(new { token = tokens.RequestToken });
+    })
+    .Produces(StatusCodes.Status200OK);
+
 app.MapPost("/api/audio/process", ProcessAudioAsync)
-    .DisableAntiforgery()
     .Produces<ProcessingResponse>(StatusCodes.Status200OK)
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status500InternalServerError);
@@ -224,7 +242,8 @@ static string EnsureTrailingSlash(string value)
 }
 
 static async Task<IResult> ProcessAudioAsync(
-    HttpRequest request,
+    HttpContext context,
+    IAntiforgery antiforgery,
     IAudioProcessingService audioProcessingService,
     JsonSerializerOptions jsonOptions,
     ILogger<Program> logger,
@@ -232,6 +251,8 @@ static async Task<IResult> ProcessAudioAsync(
 {
     try
     {
+        await antiforgery.ValidateRequestAsync(context);
+        var request = context.Request;
         if (!request.HasFormContentType)
         {
             return TypedResults.Problem(
@@ -286,6 +307,13 @@ static async Task<IResult> ProcessAudioAsync(
         return TypedResults.Problem(
             "Audio processing canceled.",
             statusCode: StatusCodes.Status408RequestTimeout);
+    }
+    catch (AntiforgeryValidationException ex)
+    {
+        logger.LogWarning(ex, "Antiforgery validation failed.");
+        return TypedResults.Problem(
+            "Invalid antiforgery token.",
+            statusCode: StatusCodes.Status400BadRequest);
     }
     catch (Exception ex)
     {

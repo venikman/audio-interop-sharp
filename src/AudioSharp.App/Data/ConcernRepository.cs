@@ -20,14 +20,11 @@ public sealed class ConcernRepository : IConcernRepository
 
     public async Task<IReadOnlyList<ConcernRecord>> GetRecentAsync(int count, CancellationToken cancellationToken)
     {
-        var records = await _dbContext.ConcernRecords
+        return await _dbContext.ConcernRecords
             .AsNoTracking()
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        return records
             .OrderByDescending(record => record.CreatedAtUtc)
             .Take(count)
-            .ToList();
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 }
