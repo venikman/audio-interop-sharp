@@ -1,0 +1,21 @@
+.env
+.gcloud/
+**/bin/
+**/obj/
+.DS_Store
+node_modules/
+npm-debug.log
+*.db-wal
+*.db-shm
+src/AudioSharp.App/wwwroot/lib/recordrtc/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.log
+
+# Test results
+TestResults/
+coverage/

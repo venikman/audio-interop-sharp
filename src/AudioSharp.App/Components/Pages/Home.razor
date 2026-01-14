@@ -1,0 +1,720 @@
+@page "/"
+@rendermode InteractiveServer
+@implements IDisposable
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using AudioSharp.App.Data
+@using AudioSharp.App.Models
+@using AudioSharp.App.Options
+@using AudioSharp.App.Services
+@inject IJSRuntime JsRuntime
+@inject IAudioProcessingService AudioProcessingService
+@inject IConcernExtractionService ConcernExtractionService
+@inject IFollowUpQuestionService FollowUpQuestionService
+@inject IConcernRefinementService ConcernRefinementService
+@inject IFhirObservationMapper ObservationMapper
+@inject IFhirBundleBuilder BundleBuilder
+@inject IConcernRepository ConcernRepository
+@inject IFhirServerClient FhirServerClient
+@inject JsonSerializerOptions JsonOptions
+@inject Microsoft.Extensions.Options.IOptions<LlmProviderOptions> ProviderOptions
+@inject Microsoft.Extensions.Options.IOptions<RecordingOptions> RecordingOptions
+@inject Microsoft.Extensions.Options.IOptions<FhirServerOptions> FhirServerOptions
+
+<PageTitle>Concern Capture</PageTitle>
+
+<section class="hero-panel">
+    <div>
+        <span class="kicker">Agentic audio to FHIR</span>
+        <h1>Capture Patient Concerns</h1>
+        <p>
+            Record or upload audio, extract concerns, and generate FHIR R4 Observation bundles with a review step.
+        </p>
+    </div>
+    <div class="hero-badges">
+        <div class="pill">OpenRouter audio</div>
+        <div class="pill">Text: @ProviderOptions.Value.TextProvider</div>
+        <div class="pill">FHIR R4 Observations</div>
+    </div>
+</section>
+
+<div class="grid">
+    <section class="panel">
+        <h2>Capture</h2>
+        <div class="field-grid">
+            <label for="subjectReference">Subject reference</label>
+            <fast-text-field id="subjectReference"
+                             @bind-value="SubjectReference"
+                             @bind-value:event="input"
+                             placeholder="Patient/123">
+            </fast-text-field>
+
+            <label for="subjectDisplay">Subject display</label>
+            <fast-text-field id="subjectDisplay"
+                             @bind-value="SubjectDisplay"
+                             @bind-value:event="input"
+                             placeholder="Jane Doe">
+            </fast-text-field>
+        </div>
+
+        <div class="button-row">
+            <fast-button class="btn-primary" appearance="accent" @onclick="StartRecordingAsync" disabled="@IsRecording">
+                Start recording
+            </fast-button>
+            <fast-button class="btn-outline-light" appearance="outline" @onclick="StopRecordingAsync" disabled="@(!IsRecording || IsProcessing)">
+                Stop & analyze
+            </fast-button>
+            <fast-button class="btn-outline-light" appearance="outline" @onclick="CancelProcessing" disabled="@(!IsProcessing)">
+                Cancel
+            </fast-button>
+        </div>
+        <div class="timer-row">
+            <span class="timer-label">Recording</span>
+            <span class="timer-value">@FormatTime(RecordingSeconds) / @FormatTime(MaxRecordingSeconds)</span>
+            <span class="timer-hint">Max @MaxRecordingSeconds s</span>
+        </div>
+
+        <div class="upload-zone">
+            <InputFile OnChange="OnFileSelectedAsync" accept="audio/*" />
+            <p class="muted">Recording produces 16 kHz mono WAV. For best results, upload WAV or MP3.</p>
+        </div>
+
+        <div class="status-line">
+            <span class="status-dot" data-state="@StatusState"></span>
+            <span>@StatusMessage</span>
+        </div>
+
+        <div class="transcript-block">
+            <label for="transcript">Transcript</label>
+            <fast-text-area id="transcript" rows="8" @bind-value="Transcript" @bind-value:event="input"></fast-text-area>
+            <fast-button class="btn-outline-light" appearance="outline" @onclick="ExtractFromTranscriptAsync" disabled="@(IsProcessing || string.IsNullOrWhiteSpace(Transcript))">
+                Extract from text
+            </fast-button>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Extracted concerns</h2>
+        @if (Concerns.Count == 0)
+        {
+            <p class="muted">No concerns extracted yet.</p>
+        }
+        else
+        {
+            <div class="concern-list">
+                @foreach (var concern in Concerns)
+                {
+                    <div class="concern-card">
+                        <div class="concern-title">@concern.Summary</div>
+                        <div class="concern-meta">
+                            <span>Severity: @(string.IsNullOrWhiteSpace(concern.Severity) ? "unknown" : concern.Severity)</span>
+                            @if (!string.IsNullOrWhiteSpace(concern.Onset))
+                            {
+                                <span>Onset: @concern.Onset</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(concern.Duration))
+                            {
+                                <span>Duration: @concern.Duration</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(concern.Impact))
+                        {
+                            <div class="concern-detail">Impact: @concern.Impact</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(concern.Context))
+                        {
+                            <div class="concern-detail">Context: @concern.Context</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(concern.PatientQuote))
+                        {
+                            <div class="concern-quote">"@concern.PatientQuote"</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        <h2 class="section-title">Follow-up questions</h2>
+        <div class="followup-panel">
+            <div class="followup-header">
+                <div>
+                    <div class="followup-title">Agentic follow-up</div>
+                    <div class="muted">Generate targeted questions for missing severity, onset, duration, impact, and context.</div>
+                </div>
+                <div class="button-row followup-actions">
+                    <fast-button class="btn-outline-light" appearance="outline" @onclick="GenerateFollowUpsAsync" disabled="@(!CanGenerateFollowUps)">
+                        Generate questions
+                    </fast-button>
+                    <fast-button class="btn-primary" appearance="accent" @onclick="ApplyFollowUpAnswersAsync" disabled="@(!CanApplyFollowUps)">
+                        Apply answers
+                    </fast-button>
+                </div>
+            </div>
+
+            @if (FollowUpEntries.Count == 0)
+            {
+                <p class="muted">No follow-up questions yet.</p>
+            }
+            else
+            {
+                <div class="followup-list">
+                    @foreach (var entry in FollowUpEntries)
+                    {
+                        <div class="followup-item">
+                            <div class="followup-label">@entry.Question.ConcernSummary</div>
+                            <div class="followup-question">@entry.Question.Question</div>
+                            <fast-text-area rows="2"
+                                            @bind-value="entry.Answer"
+                                            @bind-value:event="input"
+                                            placeholder="Type the patient response">
+                            </fast-text-area>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(FollowUpStatusMessage))
+            {
+                <div class="muted">@FollowUpStatusMessage</div>
+            }
+        </div>
+
+        <div class="button-row">
+            <fast-button class="btn-primary" appearance="accent" @onclick="SaveAsync" disabled="@(!CanSave)">
+                Save to SQL
+            </fast-button>
+            <fast-button class="btn-outline-light" appearance="outline" @onclick="SendToFhirAsync" disabled="@(!CanSendToFhir)">
+                Send to FHIR
+            </fast-button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(FhirStatusMessage))
+        {
+            <div class="muted">@FhirStatusMessage</div>
+        }
+        else if (!IsFhirConfigured)
+        {
+            <div class="muted">Configure FhirServer:BaseUrl to enable sending.</div>
+        }
+
+        <h2 class="section-title">FHIR Observation bundle</h2>
+        @if (string.IsNullOrWhiteSpace(BundleJson))
+        {
+            <p class="muted">Bundle JSON will appear here after extraction.</p>
+        }
+        else
+        {
+            <pre class="json-block">@BundleJson</pre>
+        }
+    </section>
+</div>
+
+@if (RecentRecords.Count > 0)
+{
+    <section class="panel panel-wide">
+        <h2>Recent captures</h2>
+        <div class="recent-grid">
+            @foreach (var record in RecentRecords)
+            {
+                <div class="recent-card">
+                    <div class="recent-title">@record.CreatedAtUtc.ToLocalTime().ToString("g")</div>
+                    <div class="recent-subtitle">@(record.SubjectDisplay ?? record.SubjectReference ?? "Unknown subject")</div>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@code {
+    private string SubjectReference { get; set; } = string.Empty;
+    private string SubjectDisplay { get; set; } = string.Empty;
+    private string Transcript { get; set; } = string.Empty;
+    private string StatusMessage { get; set; } = "Ready.";
+    private string StatusState { get; set; } = "idle";
+    private string BundleJson { get; set; } = string.Empty;
+    private string FhirStatusMessage { get; set; } = string.Empty;
+    private string FollowUpStatusMessage { get; set; } = string.Empty;
+    private int RecordingSeconds { get; set; }
+
+    private bool IsRecording { get; set; }
+    private bool IsProcessing { get; set; }
+    private bool IsSendingToFhir { get; set; }
+
+    private List<ConcernItem> Concerns { get; } = [];
+    private List<ConcernRecord> RecentRecords { get; } = [];
+    private List<FollowUpEntry> FollowUpEntries { get; } = [];
+    private CancellationTokenSource? ProcessingCts { get; set; }
+    private CancellationTokenSource? RecordingTimerCts { get; set; }
+
+    private bool CanSave => !IsProcessing && Concerns.Count > 0 && !string.IsNullOrWhiteSpace(BundleJson);
+    private bool IsFhirConfigured => !string.IsNullOrWhiteSpace(FhirServerOptions.Value.BaseUrl);
+    private bool CanSendToFhir => IsFhirConfigured && !IsProcessing && !IsSendingToFhir && !string.IsNullOrWhiteSpace(BundleJson);
+    private int MaxRecordingSeconds => RecordingOptions.Value.MaxSeconds;
+    private long MaxAudioBytes => RecordingOptions.Value.MaxAudioBytes;
+    private bool CanGenerateFollowUps => !IsProcessing && !IsRecording && Concerns.Count > 0;
+    private bool CanApplyFollowUps =>
+        !IsProcessing && !IsRecording && FollowUpEntries.Any(entry => !string.IsNullOrWhiteSpace(entry.Answer));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecentAsync();
+    }
+
+    private async Task StartRecordingAsync()
+    {
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("audioRecorder.start");
+            IsRecording = true;
+            RecordingSeconds = 0;
+            FhirStatusMessage = string.Empty;
+            ResetFollowUps();
+            StartRecordingTimer();
+            StatusMessage = "Recording...";
+            StatusState = "recording";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Recording failed: {ex.Message}";
+            StatusState = "error";
+        }
+    }
+
+    private async Task StopRecordingAsync()
+    {
+        if (!IsRecording)
+        {
+            return;
+        }
+
+        IsRecording = false;
+        ResetProcessing();
+        ResetFollowUps();
+        IsProcessing = true;
+        StopRecordingTimer();
+        StatusMessage = "Processing audio...";
+        StatusState = "processing";
+
+        try
+        {
+            var response = await JsRuntime.InvokeAsync<ProcessingResponse>(
+                "audioRecorder.stopAndProcess",
+                ProcessingToken,
+                SubjectReference,
+                SubjectDisplay);
+
+            if (string.IsNullOrWhiteSpace(response.Transcript))
+            {
+                StatusMessage = "No audio captured.";
+                StatusState = "idle";
+                return;
+            }
+
+            Transcript = response.Transcript;
+            Concerns.Clear();
+            Concerns.AddRange(response.Concerns);
+            BundleJson = response.BundleJson;
+            StatusMessage = "Analysis complete.";
+            StatusState = "ready";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Processing canceled.";
+            StatusState = "idle";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Stop failed: {ex.Message}";
+            StatusState = "error";
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        ResetProcessing();
+        ResetFollowUps();
+        FhirStatusMessage = string.Empty;
+        StatusMessage = "Processing audio file...";
+        StatusState = "processing";
+
+        try
+        {
+            using var stream = file.OpenReadStream(MaxAudioBytes);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory, ProcessingToken);
+            var base64 = Convert.ToBase64String(memory.ToArray());
+
+            await ProcessAudioAsync(new AudioInput(base64, file.ContentType));
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Upload failed: {ex.Message}";
+            StatusState = "error";
+        }
+    }
+
+    private async Task ExtractFromTranscriptAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Transcript))
+        {
+            return;
+        }
+
+        ResetProcessing();
+        IsProcessing = true;
+        ResetFollowUps();
+        FhirStatusMessage = string.Empty;
+        StatusMessage = "Extracting concerns...";
+        StatusState = "processing";
+
+        try
+        {
+            var extraction = await ConcernExtractionService
+                .ExtractAsync(Transcript, ProcessingToken);
+
+            UpdateResults(extraction);
+            StatusMessage = "Extraction complete.";
+            StatusState = "ready";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Extraction canceled.";
+            StatusState = "idle";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Extraction failed: {ex.Message}";
+            StatusState = "error";
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private async Task ProcessAudioAsync(AudioInput audioInput)
+    {
+        ResetProcessing();
+        IsProcessing = true;
+        ResetFollowUps();
+
+        try
+        {
+            var context = new ProcessingContext(
+                string.IsNullOrWhiteSpace(SubjectReference) ? null : SubjectReference,
+                string.IsNullOrWhiteSpace(SubjectDisplay) ? null : SubjectDisplay);
+
+            var result = await AudioProcessingService
+                .ProcessAsync(audioInput, context, ProcessingToken);
+
+            Transcript = result.Transcript;
+            Concerns.Clear();
+            Concerns.AddRange(result.Concerns);
+            BundleJson = JsonSerializer.Serialize(result.Bundle, JsonOptions);
+            StatusMessage = "Analysis complete.";
+            StatusState = "ready";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Processing canceled.";
+            StatusState = "idle";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Processing failed: {ex.Message}";
+            StatusState = "error";
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave)
+        {
+            return;
+        }
+
+        try
+        {
+            var record = new ConcernRecord
+            {
+                Transcript = Transcript,
+                ConcernsJson = JsonSerializer.Serialize(Concerns, JsonOptions),
+                FhirBundleJson = BundleJson,
+                SubjectReference = string.IsNullOrWhiteSpace(SubjectReference) ? null : SubjectReference,
+                SubjectDisplay = string.IsNullOrWhiteSpace(SubjectDisplay) ? null : SubjectDisplay
+            };
+
+            await ConcernRepository.AddAsync(record, CancellationToken.None);
+            StatusMessage = "Saved.";
+            StatusState = "ready";
+
+            await LoadRecentAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Save failed: {ex.Message}";
+            StatusState = "error";
+        }
+    }
+
+    private async Task LoadRecentAsync()
+    {
+        RecentRecords.Clear();
+        var records = await ConcernRepository
+            .GetRecentAsync(6, CancellationToken.None);
+        RecentRecords.AddRange(records);
+    }
+
+    private void UpdateResults(ConcernExtractionResult extraction)
+    {
+        Concerns.Clear();
+        Concerns.AddRange(extraction.Concerns);
+        UpdateBundle(Concerns);
+    }
+
+    private void UpdateBundle(IReadOnlyList<ConcernItem> concerns)
+    {
+        FhirStatusMessage = string.Empty;
+
+        var context = new ProcessingContext(
+            string.IsNullOrWhiteSpace(SubjectReference) ? null : SubjectReference,
+            string.IsNullOrWhiteSpace(SubjectDisplay) ? null : SubjectDisplay);
+
+        var observations = ObservationMapper.Map(concerns, context, DateTimeOffset.UtcNow);
+        var bundle = BundleBuilder.Build(observations);
+        BundleJson = JsonSerializer.Serialize(bundle, JsonOptions);
+    }
+
+    private async Task GenerateFollowUpsAsync()
+    {
+        if (!CanGenerateFollowUps)
+        {
+            return;
+        }
+
+        ResetProcessing();
+        IsProcessing = true;
+        FollowUpStatusMessage = "Generating follow-up questions...";
+        StatusMessage = "Generating follow-up questions...";
+        StatusState = "processing";
+
+        try
+        {
+            var questions = await FollowUpQuestionService
+                .GenerateAsync(Transcript, Concerns, ProcessingToken);
+
+            FollowUpEntries.Clear();
+            foreach (var question in questions)
+            {
+                FollowUpEntries.Add(new FollowUpEntry(question));
+            }
+
+            FollowUpStatusMessage = FollowUpEntries.Count == 0
+                ? "No follow-up questions needed."
+                : "Answer the questions and apply the updates.";
+            StatusMessage = "Follow-up questions ready.";
+            StatusState = "ready";
+        }
+        catch (OperationCanceledException)
+        {
+            FollowUpStatusMessage = "Follow-up generation canceled.";
+            StatusMessage = "Follow-up generation canceled.";
+            StatusState = "idle";
+        }
+        catch (Exception ex)
+        {
+            FollowUpStatusMessage = $"Follow-up generation failed: {ex.Message}";
+            StatusMessage = $"Follow-up generation failed: {ex.Message}";
+            StatusState = "error";
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private async Task ApplyFollowUpAnswersAsync()
+    {
+        if (!CanApplyFollowUps)
+        {
+            return;
+        }
+
+        ResetProcessing();
+        IsProcessing = true;
+        FollowUpStatusMessage = "Applying follow-up answers...";
+        StatusMessage = "Applying follow-up answers...";
+        StatusState = "processing";
+
+        try
+        {
+            var answers = FollowUpEntries
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Answer))
+                .Select(entry => new FollowUpAnswer(
+                    entry.Question.ConcernIndex,
+                    entry.Question.Field,
+                    entry.Answer.Trim()))
+                .ToList();
+
+            var updated = await ConcernRefinementService
+                .ApplyAnswersAsync(Transcript, Concerns, answers, ProcessingToken);
+
+            Concerns.Clear();
+            Concerns.AddRange(updated);
+            UpdateBundle(Concerns);
+
+            FollowUpStatusMessage = "Concerns updated with follow-up answers.";
+            StatusMessage = "Concerns updated.";
+            StatusState = "ready";
+        }
+        catch (OperationCanceledException)
+        {
+            FollowUpStatusMessage = "Follow-up apply canceled.";
+            StatusMessage = "Follow-up apply canceled.";
+            StatusState = "idle";
+        }
+        catch (Exception ex)
+        {
+            FollowUpStatusMessage = $"Follow-up apply failed: {ex.Message}";
+            StatusMessage = $"Follow-up apply failed: {ex.Message}";
+            StatusState = "error";
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private async Task SendToFhirAsync()
+    {
+        if (!CanSendToFhir)
+        {
+            return;
+        }
+
+        IsSendingToFhir = true;
+        FhirStatusMessage = "Sending bundle to FHIR server...";
+
+        try
+        {
+            var result = await FhirServerClient
+                .UploadBundleAsync(BundleJson, CancellationToken.None);
+
+            FhirStatusMessage = result.Success
+                ? (string.IsNullOrWhiteSpace(result.Location)
+                    ? "FHIR server accepted the bundle."
+                    : $"FHIR server accepted the bundle: {result.Location}")
+                : $"FHIR server returned {result.StatusCode}.";
+        }
+        catch (Exception ex)
+        {
+            FhirStatusMessage = $"FHIR send failed: {ex.Message}";
+        }
+        finally
+        {
+            IsSendingToFhir = false;
+        }
+    }
+
+    private void CancelProcessing()
+    {
+        ProcessingCts?.Cancel();
+    }
+
+    private void ResetProcessing()
+    {
+        ProcessingCts?.Cancel();
+        ProcessingCts?.Dispose();
+        ProcessingCts = new CancellationTokenSource();
+    }
+
+    private void ResetFollowUps()
+    {
+        FollowUpEntries.Clear();
+        FollowUpStatusMessage = string.Empty;
+    }
+
+    private void StartRecordingTimer()
+    {
+        RecordingTimerCts?.Cancel();
+        RecordingTimerCts?.Dispose();
+        RecordingTimerCts = new CancellationTokenSource();
+        _ = RunRecordingTimerAsync(RecordingTimerCts.Token);
+    }
+
+    private void StopRecordingTimer()
+    {
+        RecordingTimerCts?.Cancel();
+        RecordingTimerCts?.Dispose();
+        RecordingTimerCts = null;
+    }
+
+    private async Task RunRecordingTimerAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (!IsRecording)
+                {
+                    return;
+                }
+
+                RecordingSeconds++;
+                await InvokeAsync(StateHasChanged);
+
+                if (RecordingSeconds >= MaxRecordingSeconds)
+                {
+                    await InvokeAsync(StopRecordingAsync);
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when stopping the recording timer.
+        }
+    }
+
+    private static string FormatTime(int totalSeconds)
+    {
+        var minutes = totalSeconds / 60;
+        var seconds = totalSeconds % 60;
+        return $"{minutes:00}:{seconds:00}";
+    }
+
+    private CancellationToken ProcessingToken => ProcessingCts?.Token ?? CancellationToken.None;
+
+    private sealed class FollowUpEntry
+    {
+        public FollowUpEntry(FollowUpQuestion question)
+        {
+            Question = question;
+        }
+
+        public FollowUpQuestion Question { get; }
+
+        public string Answer { get; set; } = string.Empty;
+    }
+
+    public void Dispose()
+    {
+        StopRecordingTimer();
+        ProcessingCts?.Cancel();
+        ProcessingCts?.Dispose();
+    }
+}
