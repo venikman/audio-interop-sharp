@@ -4,6 +4,10 @@ ARG DOTNET_VERSION=10.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 WORKDIR /src
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY ["src/AudioSharp.App/AudioSharp.App.csproj", "src/AudioSharp.App/"]
 RUN dotnet restore "src/AudioSharp.App/AudioSharp.App.csproj"
 

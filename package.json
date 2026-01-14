@@ -1,0 +1,11 @@
+{
+  "name": "audio-sharp",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i ./src/AudioSharp.App/Styles/app.css -o ./src/AudioSharp.App/wwwroot/app.css --minify",
+    "watch:css": "tailwindcss -c tailwind.config.js -i ./src/AudioSharp.App/Styles/app.css -o ./src/AudioSharp.App/wwwroot/app.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.15"
+  }
+}

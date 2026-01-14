@@ -3,17 +3,17 @@
 @implements IDisposable
 @inject IAiUsageTelemetry AiUsageTelemetry
 
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">AudioSharp</a>
-        <span class="badge bg-light text-dark ms-2">FHIR R4</span>
+<div class="top-row">
+    <div class="flex items-center gap-2 px-4 py-2">
+        <a class="navbar-brand text-white" href="">AudioSharp</a>
+        <span class="inline-flex items-center rounded-full bg-slate-100 text-slate-900 text-xs font-semibold px-2.5 py-0.5">FHIR R4</span>
     </div>
 </div>
 
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
+    <nav class="flex flex-col">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span class="bi bi-mic-fill-nav-menu" aria-hidden="true"></span> Capture Concerns
