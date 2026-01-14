@@ -20,10 +20,23 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
   </ItemGroup>
 
-  <Target Name="BuildTailwindCss" BeforeTargets="Publish" Condition="'$(SkipTailwindCss)' != 'true'">
-    <Message Importance="high" Text="Building Tailwind CSS..." />
+  <Target Name="CopyRecordRtc" BeforeTargets="Build"
+          Condition="Exists('$(RepositoryRoot)/node_modules/recordrtc/RecordRTC.min.js')">
+    <MakeDir Directories="$(MSBuildProjectDirectory)/wwwroot/lib/recordrtc" />
+    <Copy SourceFiles="$(RepositoryRoot)/node_modules/recordrtc/RecordRTC.min.js"
+          DestinationFiles="$(MSBuildProjectDirectory)/wwwroot/lib/recordrtc/recordrtc.min.js"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PrepareFrontendAssets" BeforeTargets="Publish">
+    <Message Importance="high" Text="Preparing frontend assets..." />
     <Exec Command="npm ci" WorkingDirectory="$(RepositoryRoot)" Condition="!Exists('$(RepositoryRoot)/node_modules')" />
-    <Exec Command="npm run build:css" WorkingDirectory="$(RepositoryRoot)" />
+    <Exec Command="npm run build:css" WorkingDirectory="$(RepositoryRoot)"
+          Condition="'$(SkipTailwindCss)' != 'true'" />
+    <MakeDir Directories="$(MSBuildProjectDirectory)/wwwroot/lib/recordrtc" />
+    <Copy SourceFiles="$(RepositoryRoot)/node_modules/recordrtc/RecordRTC.min.js"
+          DestinationFiles="$(MSBuildProjectDirectory)/wwwroot/lib/recordrtc/recordrtc.min.js"
+          SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
