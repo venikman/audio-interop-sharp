@@ -13,7 +13,6 @@ window.audioRecorder = (() => {
   let inputSampleRate = 0;
   let isRecording = false;
   let options = { ...defaultOptions };
-  let usingAudioWorklet = false;
   let antiforgeryToken = null;
 
   const getAntiforgeryToken = async () => {
@@ -46,6 +45,18 @@ window.audioRecorder = (() => {
       throw new Error("Audio capture is not supported in this browser.");
     }
 
+    const cleanupOnError = async () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      if (audioContext) {
+        await audioContext.close();
+      }
+
+      resetState();
+    };
+
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: options.channelCount,
@@ -59,6 +70,7 @@ window.audioRecorder = (() => {
 
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextCtor) {
+      await cleanupOnError();
       throw new Error("AudioContext is not available.");
     }
 
@@ -67,45 +79,35 @@ window.audioRecorder = (() => {
 
     source = audioContext.createMediaStreamSource(stream);
     buffers = [];
-    usingAudioWorklet = false;
 
-    if (audioContext.audioWorklet) {
-      try {
-        await audioContext.audioWorklet.addModule("/js/audio-capture-worklet.js");
-        processor = new AudioWorkletNode(audioContext, "audio-capture-processor", {
-          numberOfInputs: 1,
-          numberOfOutputs: 1,
-          channelCount: options.channelCount
-        });
-        processor.port.onmessage = (event) => {
-          if (!isRecording) {
-            return;
-          }
-
-          const data = event.data;
-          if (data instanceof Float32Array) {
-            buffers.push(data);
-          } else if (data && data.buffer) {
-            buffers.push(new Float32Array(data));
-          }
-        };
-        processor.port.postMessage({ command: "start" });
-        usingAudioWorklet = true;
-      } catch (error) {
-        console.warn("AudioWorklet failed, falling back to ScriptProcessor.", error);
-      }
+    if (!audioContext.audioWorklet) {
+      await cleanupOnError();
+      throw new Error("AudioWorklet is not supported in this browser.");
     }
 
-    if (!processor) {
-      processor = audioContext.createScriptProcessor(4096, options.channelCount, options.channelCount);
-      processor.onaudioprocess = (event) => {
+    try {
+      await audioContext.audioWorklet.addModule("/js/audio-capture-worklet.js");
+      processor = new AudioWorkletNode(audioContext, "audio-capture-processor", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        channelCount: options.channelCount
+      });
+      processor.port.onmessage = (event) => {
         if (!isRecording) {
           return;
         }
 
-        const channelData = event.inputBuffer.getChannelData(0);
-        buffers.push(new Float32Array(channelData));
+        const data = event.data;
+        if (data instanceof Float32Array) {
+          buffers.push(data);
+        } else if (data && data.buffer) {
+          buffers.push(new Float32Array(data));
+        }
       };
+      processor.port.postMessage({ command: "start" });
+    } catch (error) {
+      await cleanupOnError();
+      throw error;
     }
 
     zeroGain = audioContext.createGain();
@@ -128,7 +130,7 @@ window.audioRecorder = (() => {
 
     if (processor) {
       processor.disconnect();
-      if (usingAudioWorklet && processor.port) {
+      if (processor.port) {
         processor.port.postMessage({ command: "stop" });
         processor.port.onmessage = null;
       } else {
@@ -226,7 +228,6 @@ window.audioRecorder = (() => {
     zeroGain = null;
     buffers = [];
     inputSampleRate = 0;
-    usingAudioWorklet = false;
   };
 
   const mergeBuffers = (bufferList, totalLength) => {
