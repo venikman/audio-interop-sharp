@@ -1,0 +1,163 @@
+@theme {
+    --font-sans: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+    --font-display: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+
+    --color-ink-950: #111827;
+    --color-ink-900: #1f2937;
+    --color-ink-700: #4b5563;
+    --color-ink-500: #6b7280;
+
+    --color-brand-50: #fffbeb;
+    --color-brand-200: #fde68a;
+    --color-brand-300: #fcd34d;
+    --color-brand-400: #fbbf24;
+    --color-brand-500: #f59e0b;
+    --color-brand-600: #d97706;
+
+    --color-accent-200: #fde68a;
+    --color-accent-400: #f59e0b;
+
+    --color-surface: #ffffff;
+    --color-surface-soft: #f8fafc;
+
+    --shadow-hero: 0 30px 80px -60px rgba(17, 24, 39, 0.2);
+    --shadow-card: 0 18px 40px -25px rgba(17, 24, 39, 0.12);
+    --shadow-raise: 0 12px 22px -14px rgba(245, 158, 11, 0.35);
+    --shadow-sidenav: 0 20px 50px -35px rgba(17, 24, 39, 0.18);
+
+    --radius-hero: 0px;
+    --radius-card: 0px;
+}
+
+@layer base {
+    :root,
+    .dark {
+        color-scheme: light;
+        --background: #f8fafc;
+        --foreground: var(--color-ink-950);
+        --card: var(--color-surface);
+        --card-foreground: var(--color-ink-950);
+        --popover: var(--color-surface);
+        --popover-foreground: var(--color-ink-950);
+        --primary: var(--color-brand-500);
+        --primary-foreground: #ffffff;
+        --secondary: var(--color-surface-soft);
+        --secondary-foreground: var(--color-ink-950);
+        --muted: var(--color-surface-soft);
+        --muted-foreground: var(--color-ink-700);
+        --accent: var(--color-accent-400);
+        --accent-foreground: #ffffff;
+        --destructive: #ef4444;
+        --destructive-foreground: #f8fafc;
+        --border: #e5e7eb;
+        --input: #e5e7eb;
+        --ring: var(--color-accent-400);
+        --radius: 0px;
+        --radius-sm: 0px;
+        --radius-md: 0px;
+        --radius-lg: 0px;
+        --radius-xl: 0px;
+        --radius-2xl: 0px;
+        --radius-3xl: 0px;
+        --font-sans: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+        --font-display: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+        --font-mono: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+    }
+
+    html, body {
+        height: 100%;
+    }
+
+    body {
+        font-family: var(--font-sans);
+        color: var(--color-ink-950);
+        background: radial-gradient(circle at 12% 16%, rgba(245, 158, 11, 0.08), transparent 60%),
+            radial-gradient(circle at 86% 12%, rgba(251, 191, 36, 0.1), transparent 58%),
+            linear-gradient(180deg, #f9fafb 0%, #ffffff 55%, #f8fafc 100%);
+        margin: 0;
+    }
+
+    body::before,
+    body::after {
+        content: "";
+        position: fixed;
+        z-index: 0;
+        border-radius: 999px;
+        filter: blur(0px);
+        pointer-events: none;
+    }
+
+    body::before {
+        width: 320px;
+        height: 320px;
+        top: -120px;
+        right: -140px;
+        background: radial-gradient(circle, rgba(245, 158, 11, 0.16), transparent 70%);
+    }
+
+    body::after {
+        width: 300px;
+        height: 300px;
+        bottom: -140px;
+        left: -140px;
+        background: radial-gradient(circle, rgba(251, 191, 36, 0.14), transparent 70%);
+    }
+
+}
+
+@layer utilities {
+    .rounded,
+    .rounded-sm,
+    .rounded-md,
+    .rounded-lg,
+    .rounded-xl,
+    .rounded-2xl,
+    .rounded-3xl,
+    .rounded-full,
+    .rounded-card,
+    .file\:rounded-full::file-selector-button {
+        border-radius: 0;
+    }
+
+    .animate-rise {
+        animation: rise-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .animate-float {
+        animation: float 10s ease-in-out infinite;
+    }
+}
+
+@keyframes rise-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-12px);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .animate-rise,
+    .animate-float {
+        animation: none;
+    }
+}

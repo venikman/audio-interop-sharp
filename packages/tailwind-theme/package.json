@@ -1,0 +1,13 @@
+{
+  "name": "@audiosharp/tailwind-theme",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "fonts.css",
+    "theme.css"
+  ],
+  "exports": {
+    "./fonts.css": "./fonts.css",
+    "./theme.css": "./theme.css"
+  }
+}
