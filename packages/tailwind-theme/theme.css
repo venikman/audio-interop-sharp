@@ -84,7 +84,6 @@
         position: fixed;
         z-index: 0;
         border-radius: 999px;
-        filter: blur(0px);
         pointer-events: none;
     }
 

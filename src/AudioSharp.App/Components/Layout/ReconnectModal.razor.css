@@ -97,11 +97,11 @@
 }
 
     #components-reconnect-modal button:hover {
-        background-color: #3b6ea2;
+        background-color: var(--color-brand-600, #d97706);
     }
 
     #components-reconnect-modal button:active {
-        background-color: #6b9ed2;
+        background-color: var(--color-brand-600, #d97706);
     }
 
 .components-rejoining-animation {

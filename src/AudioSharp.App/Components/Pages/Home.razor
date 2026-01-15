@@ -765,7 +765,13 @@
 
                 if (RecordingSeconds >= MaxRecordingSeconds)
                 {
-                    await InvokeAsync(StopRecordingAsync);
+                    await InvokeAsync(async () =>
+                    {
+                        if (IsRecording)
+                        {
+                            await StopRecordingAsync();
+                        }
+                    });
                     return;
                 }
             }
