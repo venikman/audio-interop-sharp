@@ -23,207 +23,293 @@
 
 <PageTitle>Concern Capture</PageTitle>
 
-<section class="hero-panel">
-    <div>
-        <span class="kicker">Agentic audio to FHIR</span>
-        <h1>Capture Patient Concerns</h1>
-        <p>
-            Record or upload audio, extract concerns, and generate FHIR R4 Observation bundles with a review step.
-        </p>
-    </div>
-    <div class="hero-badges">
-        <div class="pill">OpenRouter audio</div>
-        <div class="pill">Text: @ProviderOptions.Value.TextProvider</div>
-        <div class="pill">FHIR R4 Observations</div>
-    </div>
-</section>
-
-<div class="grid">
-    <section class="panel">
-        <h2>Capture</h2>
-        <div class="field-grid">
-            <label for="subjectReference">Subject reference</label>
-            <fast-text-field id="subjectReference"
-                             @bind-value="SubjectReference"
-                             @bind-value:event="input"
-                             placeholder="Patient/123">
-            </fast-text-field>
-
-            <label for="subjectDisplay">Subject display</label>
-            <fast-text-field id="subjectDisplay"
-                             @bind-value="SubjectDisplay"
-                             @bind-value:event="input"
-                             placeholder="Jane Doe">
-            </fast-text-field>
-        </div>
-
-        <div class="button-row">
-            <fast-button class="btn-primary" appearance="accent" @onclick="StartRecordingAsync" disabled="@IsRecording">
-                Start recording
-            </fast-button>
-            <fast-button class="btn-outline-light" appearance="outline" @onclick="StopRecordingAsync" disabled="@(!IsRecording || IsProcessing)">
-                Stop & analyze
-            </fast-button>
-            <fast-button class="btn-outline-light" appearance="outline" @onclick="CancelProcessing" disabled="@(!IsProcessing)">
-                Cancel
-            </fast-button>
-        </div>
-        <div class="timer-row">
-            <span class="timer-label">Recording</span>
-            <span class="timer-value">@FormatTime(RecordingSeconds) / @FormatTime(MaxRecordingSeconds)</span>
-            <span class="timer-hint">Max @MaxRecordingSeconds s</span>
-        </div>
-
-        <div class="upload-zone">
-            <InputFile OnChange="OnFileSelectedAsync" accept="audio/*" />
-            <p class="muted">Recording produces 16 kHz mono WAV. For best results, upload WAV or MP3.</p>
-        </div>
-
-        <div class="status-line">
-            <span class="status-dot" data-state="@StatusState"></span>
-            <span>@StatusMessage</span>
-        </div>
-
-        <div class="transcript-block">
-            <label for="transcript">Transcript</label>
-            <fast-text-area id="transcript" rows="8" @bind-value="Transcript" @bind-value:event="input"></fast-text-area>
-            <fast-button class="btn-outline-light" appearance="outline" @onclick="ExtractFromTranscriptAsync" disabled="@(IsProcessing || string.IsNullOrWhiteSpace(Transcript))">
-                Extract from text
-            </fast-button>
-        </div>
-    </section>
-
-    <section class="panel">
-        <h2>Extracted concerns</h2>
-        @if (Concerns.Count == 0)
-        {
-            <p class="muted">No concerns extracted yet.</p>
-        }
-        else
-        {
-            <div class="concern-list">
-                @foreach (var concern in Concerns)
-                {
-                    <div class="concern-card">
-                        <div class="concern-title">@concern.Summary</div>
-                        <div class="concern-meta">
-                            <span>Severity: @(string.IsNullOrWhiteSpace(concern.Severity) ? "unknown" : concern.Severity)</span>
-                            @if (!string.IsNullOrWhiteSpace(concern.Onset))
-                            {
-                                <span>Onset: @concern.Onset</span>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(concern.Duration))
-                            {
-                                <span>Duration: @concern.Duration</span>
-                            }
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(concern.Impact))
-                        {
-                            <div class="concern-detail">Impact: @concern.Impact</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(concern.Context))
-                        {
-                            <div class="concern-detail">Context: @concern.Context</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(concern.PatientQuote))
-                        {
-                            <div class="concern-quote">"@concern.PatientQuote"</div>
-                        }
-                    </div>
-                }
+<div class="mt-8 grid gap-10 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+    <aside class="space-y-5">
+        <section class="space-y-4">
+            <span class="inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.3em] text-brand-500">Agentic audio to FHIR</span>
+            <h1 class="text-4xl leading-[1.05] tracking-[-0.02em] text-ink-900 sm:text-5xl lg:text-[3.75rem]">Capture Patient Concerns</h1>
+            <p class="text-sm leading-6 text-ink-500">
+                Record or upload audio, extract concerns, and generate FHIR R4 Observation bundles with a review step.
+            </p>
+            <div class="flex flex-wrap gap-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">
+                <span class="rounded-full border border-black/20 bg-surface-soft px-3 py-1">OpenRouter audio</span>
+                <span class="rounded-full border border-black/20 bg-surface-soft px-3 py-1">Text: @ProviderOptions.Value.TextProvider</span>
+                <span class="rounded-full border border-black/20 bg-surface-soft px-3 py-1">FHIR R4 Observations</span>
             </div>
-        }
+        </section>
 
-        <h2 class="section-title">Follow-up questions</h2>
-        <div class="followup-panel">
-            <div class="followup-header">
-                <div>
-                    <div class="followup-title">Agentic follow-up</div>
-                    <div class="muted">Generate targeted questions for missing severity, onset, duration, impact, and context.</div>
+        <section class="rounded-card border border-black/20 bg-surface p-4 shadow-card">
+            <div class="text-[12px] font-semibold uppercase tracking-[0.3em] text-ink-500">Table of contents</div>
+            <div class="relative mt-4">
+                <span class="pointer-events-none absolute left-1 top-2 h-[calc(100%-0.5rem)] w-px bg-black/20"></span>
+                <ol class="space-y-3 pl-4 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">
+                    <li>
+                        <a class="group flex items-center gap-3 transition hover:text-ink-900" href="#capture">
+                            <span class="text-[12px] text-ink-500">01</span>
+                            <span class="mt-0.5 h-1.5 w-1.5 rounded-full bg-brand-500/80 transition group-hover:bg-brand-500"></span>
+                            <span class="flex-1 border-b border-black/20 pb-2">Capture</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="group flex items-center gap-3 transition hover:text-ink-900" href="#concerns">
+                            <span class="text-[12px] text-ink-500">02</span>
+                            <span class="mt-0.5 h-1.5 w-1.5 rounded-full bg-brand-500/60 transition group-hover:bg-brand-500"></span>
+                            <span class="flex-1 border-b border-black/20 pb-2">Extracted concerns</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="group flex items-center gap-3 transition hover:text-ink-900" href="#followups">
+                            <span class="text-[12px] text-ink-500">03</span>
+                            <span class="mt-0.5 h-1.5 w-1.5 rounded-full bg-brand-500/60 transition group-hover:bg-brand-500"></span>
+                            <span class="flex-1 border-b border-black/20 pb-2">Follow-up questions</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="group flex items-center gap-3 transition hover:text-ink-900" href="#bundle">
+                            <span class="text-[12px] text-ink-500">04</span>
+                            <span class="mt-0.5 h-1.5 w-1.5 rounded-full bg-brand-500/60 transition group-hover:bg-brand-500"></span>
+                            <span class="flex-1 border-b border-black/20 pb-2">FHIR bundle</span>
+                        </a>
+                    </li>
+                    @if (RecentRecords.Count > 0)
+                    {
+                        <li>
+                            <a class="group flex items-center gap-3 transition hover:text-ink-900" href="#recent">
+                                <span class="text-[12px] text-ink-500">05</span>
+                                <span class="mt-0.5 h-1.5 w-1.5 rounded-full bg-brand-500/60 transition group-hover:bg-brand-500"></span>
+                                <span class="flex-1 border-b border-black/20 pb-2">Recent captures</span>
+                            </a>
+                        </li>
+                    }
+                </ol>
+            </div>
+        </section>
+
+        <TelemetryPanel />
+    </aside>
+
+    <div class="space-y-6">
+        <section id="capture" class="scroll-mt-24 rounded-card border border-black/20 bg-surface p-4 shadow-card sm:p-5">
+            <h2 class="text-lg font-semibold tracking-tight text-ink-900">Capture</h2>
+            <div class="mt-4 grid gap-4">
+                <div class="space-y-2">
+                    <label for="subjectReference" class="text-[12px] font-semibold uppercase tracking-[0.3em] text-ink-700">Subject reference</label>
+                    <input id="subjectReference"
+                           class="w-full rounded-2xl border border-black/20 bg-surface px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 shadow-sm focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-200"
+                           @bind-value="SubjectReference"
+                           @bind-value:event="oninput"
+                           placeholder="Patient/123" />
                 </div>
-                <div class="button-row followup-actions">
-                    <fast-button class="btn-outline-light" appearance="outline" @onclick="GenerateFollowUpsAsync" disabled="@(!CanGenerateFollowUps)">
-                        Generate questions
-                    </fast-button>
-                    <fast-button class="btn-primary" appearance="accent" @onclick="ApplyFollowUpAnswersAsync" disabled="@(!CanApplyFollowUps)">
-                        Apply answers
-                    </fast-button>
+
+                <div class="space-y-2">
+                    <label for="subjectDisplay" class="text-[12px] font-semibold uppercase tracking-[0.3em] text-ink-700">Subject display</label>
+                    <input id="subjectDisplay"
+                           class="w-full rounded-2xl border border-black/20 bg-surface px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 shadow-sm focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-200"
+                           @bind-value="SubjectDisplay"
+                           @bind-value:event="oninput"
+                           placeholder="Jane Doe" />
                 </div>
             </div>
 
-            @if (FollowUpEntries.Count == 0)
+            <div class="mt-4 flex flex-wrap gap-2">
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-full bg-brand-500 px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-950 shadow-raise transition hover:bg-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        @onclick="StartRecordingAsync"
+                        disabled="@IsRecording">
+                    Start recording
+                </button>
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-full border border-black/20 bg-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-700 transition hover:border-black/40 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        @onclick="StopRecordingAsync"
+                        disabled="@(!IsRecording || IsProcessing)">
+                    Stop & analyze
+                </button>
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-full border border-black/20 bg-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-700 transition hover:border-black/40 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        @onclick="CancelProcessing"
+                        disabled="@(!IsProcessing)">
+                    Cancel
+                </button>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">
+                <span>Recording</span>
+                <span class="rounded-full border border-black/20 bg-surface-soft px-2.5 py-1 text-[12px] font-semibold text-ink-500">@FormatTime(RecordingSeconds) / @FormatTime(MaxRecordingSeconds)</span>
+                <span class="text-[12px] text-ink-500 sm:ml-auto">Max @MaxRecordingSeconds s</span>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-dashed border-black/20 bg-surface-soft p-4">
+                <InputFile class="block w-full text-sm text-ink-700 file:mr-4 file:rounded-none file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-ink-950 hover:file:bg-brand-400"
+                           OnChange="OnFileSelectedAsync"
+                           accept="audio/*" />
+                <p class="mt-2 text-xs text-ink-500">Recording produces 16 kHz mono WAV. For best results, upload WAV or MP3.</p>
+            </div>
+
+            <div class="mt-4 flex items-center gap-3 text-sm font-semibold text-ink-500">
+                <span class="h-2.5 w-2.5 rounded-full bg-black/20 transition data-[state=recording]:bg-rose-500 data-[state=recording]:shadow-[0_0_0_6px_rgba(244,63,94,0.2)] data-[state=processing]:bg-amber-400 data-[state=processing]:shadow-[0_0_0_6px_rgba(251,191,36,0.25)] data-[state=ready]:bg-emerald-500 data-[state=ready]:shadow-[0_0_0_6px_rgba(16,185,129,0.2)] data-[state=error]:bg-red-600 data-[state=error]:shadow-[0_0_0_6px_rgba(220,38,38,0.2)]"
+                      data-state="@StatusState"></span>
+                <span>@StatusMessage</span>
+            </div>
+
+            <div class="mt-5 space-y-3">
+                <label for="transcript" class="text-[12px] font-semibold uppercase tracking-[0.3em] text-ink-700">Transcript</label>
+                <textarea id="transcript"
+                          rows="6"
+                          class="w-full rounded-2xl border border-black/20 bg-surface px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-500 shadow-sm focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-200"
+                          @bind-value="Transcript"
+                          @bind-value:event="oninput"></textarea>
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-full border border-black/20 bg-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-700 transition hover:border-black/40 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        @onclick="ExtractFromTranscriptAsync"
+                        disabled="@(IsProcessing || string.IsNullOrWhiteSpace(Transcript))">
+                    Extract from text
+                </button>
+            </div>
+        </section>
+
+        <section id="concerns" class="scroll-mt-24 rounded-card border border-black/20 bg-surface p-4 shadow-card sm:p-5">
+            <h2 class="text-lg font-semibold tracking-tight text-ink-900">Extracted concerns</h2>
+            @if (Concerns.Count == 0)
             {
-                <p class="muted">No follow-up questions yet.</p>
+                <p class="mt-2 text-sm text-ink-700">No concerns extracted yet.</p>
             }
             else
             {
-                <div class="followup-list">
-                    @foreach (var entry in FollowUpEntries)
+                <div class="mt-4 space-y-4">
+                    @foreach (var concern in Concerns)
                     {
-                        <div class="followup-item">
-                            <div class="followup-label">@entry.Question.ConcernSummary</div>
-                            <div class="followup-question">@entry.Question.Question</div>
-                            <fast-text-area rows="2"
-                                            @bind-value="entry.Answer"
-                                            @bind-value:event="input"
-                                            placeholder="Type the patient response">
-                            </fast-text-area>
+                        <div class="rounded-2xl border border-black/20 bg-surface p-4">
+                            <div class="text-sm font-semibold text-ink-900">@concern.Summary</div>
+                            <div class="mt-2 flex flex-wrap gap-2 text-xs text-ink-500">
+                                <span>Severity: @(string.IsNullOrWhiteSpace(concern.Severity) ? "unknown" : concern.Severity)</span>
+                                @if (!string.IsNullOrWhiteSpace(concern.Onset))
+                                {
+                                    <span>Onset: @concern.Onset</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(concern.Duration))
+                                {
+                                    <span>Duration: @concern.Duration</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(concern.Impact))
+                            {
+                                <div class="mt-2 text-sm text-ink-700">Impact: @concern.Impact</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(concern.Context))
+                            {
+                                <div class="mt-2 text-sm text-ink-700">Context: @concern.Context</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(concern.PatientQuote))
+                            {
+                                <div class="mt-3 border-l-4 border-brand-300/80 pl-3 text-sm italic text-ink-500">"@concern.PatientQuote"</div>
+                            }
                         </div>
                     }
                 </div>
             }
 
-            @if (!string.IsNullOrWhiteSpace(FollowUpStatusMessage))
-            {
-                <div class="muted">@FollowUpStatusMessage</div>
-            }
-        </div>
-
-        <div class="button-row">
-            <fast-button class="btn-primary" appearance="accent" @onclick="SaveAsync" disabled="@(!CanSave)">
-                Save to SQL
-            </fast-button>
-            <fast-button class="btn-outline-light" appearance="outline" @onclick="SendToFhirAsync" disabled="@(!CanSendToFhir)">
-                Send to FHIR
-            </fast-button>
-        </div>
-        @if (!string.IsNullOrWhiteSpace(FhirStatusMessage))
-        {
-            <div class="muted">@FhirStatusMessage</div>
-        }
-        else if (!IsFhirConfigured)
-        {
-            <div class="muted">Configure FhirServer:BaseUrl to enable sending.</div>
-        }
-
-        <h2 class="section-title">FHIR Observation bundle</h2>
-        @if (string.IsNullOrWhiteSpace(BundleJson))
-        {
-            <p class="muted">Bundle JSON will appear here after extraction.</p>
-        }
-        else
-        {
-            <pre class="json-block">@BundleJson</pre>
-        }
-    </section>
-</div>
-
-@if (RecentRecords.Count > 0)
-{
-    <section class="panel panel-wide">
-        <h2>Recent captures</h2>
-        <div class="recent-grid">
-            @foreach (var record in RecentRecords)
-            {
-                <div class="recent-card">
-                    <div class="recent-title">@record.CreatedAtUtc.ToLocalTime().ToString("g")</div>
-                    <div class="recent-subtitle">@(record.SubjectDisplay ?? record.SubjectReference ?? "Unknown subject")</div>
+            <h2 id="followups" class="scroll-mt-24 mt-8 text-lg font-semibold tracking-tight text-ink-900">Follow-up questions</h2>
+            <div class="mt-4 rounded-2xl border border-black/20 bg-surface p-4">
+                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                        <div class="text-sm font-semibold text-ink-700">Agentic follow-up</div>
+                        <div class="text-sm text-ink-500">Generate targeted questions for missing severity, onset, duration, impact, and context.</div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button"
+                                class="inline-flex items-center justify-center rounded-full border border-black/20 bg-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-700 transition hover:border-black/40 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                @onclick="GenerateFollowUpsAsync"
+                                disabled="@(!CanGenerateFollowUps)">
+                            Generate questions
+                        </button>
+                        <button type="button"
+                                class="inline-flex items-center justify-center rounded-full bg-brand-500 px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-950 shadow-raise transition hover:bg-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                @onclick="ApplyFollowUpAnswersAsync"
+                                disabled="@(!CanApplyFollowUps)">
+                            Apply answers
+                        </button>
+                    </div>
                 </div>
-            }
-        </div>
-    </section>
-}
 
+                @if (FollowUpEntries.Count == 0)
+                {
+                    <p class="mt-4 text-sm text-ink-500">No follow-up questions yet.</p>
+                }
+                else
+                {
+                    <div class="mt-4 space-y-4">
+                        @foreach (var entry in FollowUpEntries)
+                        {
+                            <div class="rounded-2xl border border-black/20 bg-surface p-4">
+                                <div class="text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">@entry.Question.ConcernSummary</div>
+                                <div class="mt-2 text-sm font-semibold text-ink-700">@entry.Question.Question</div>
+                                <textarea rows="2"
+                                          class="mt-2 w-full rounded-2xl border border-black/20 bg-surface px-3 py-2 text-sm text-ink-900 placeholder:text-ink-500 shadow-sm focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-200"
+                                          @bind-value="entry.Answer"
+                                          @bind-value:event="oninput"
+                                          placeholder="Type the patient response"></textarea>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(FollowUpStatusMessage))
+                {
+                    <div class="mt-3 text-sm text-ink-500">@FollowUpStatusMessage</div>
+                }
+            </div>
+
+            <div class="mt-5 flex flex-wrap gap-2">
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-full bg-brand-500 px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-950 shadow-raise transition hover:bg-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        @onclick="SaveAsync"
+                        disabled="@(!CanSave)">
+                    Save to SQL
+                </button>
+                <button type="button"
+                        class="inline-flex items-center justify-center rounded-full border border-black/20 bg-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-700 transition hover:border-black/40 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        @onclick="SendToFhirAsync"
+                        disabled="@(!CanSendToFhir)">
+                    Send to FHIR
+                </button>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(FhirStatusMessage))
+            {
+                <div class="mt-3 text-sm text-ink-500">@FhirStatusMessage</div>
+            }
+            else if (!IsFhirConfigured)
+            {
+                <div class="mt-3 text-sm text-ink-500">Configure FhirServer:BaseUrl to enable sending.</div>
+            }
+
+            <h2 id="bundle" class="scroll-mt-24 mt-8 text-lg font-semibold tracking-tight text-ink-900">FHIR Observation bundle</h2>
+            @if (string.IsNullOrWhiteSpace(BundleJson))
+            {
+                <p class="mt-2 text-sm text-ink-500">Bundle JSON will appear here after extraction.</p>
+            }
+            else
+            {
+                <pre class="mt-3 max-h-80 overflow-auto rounded-2xl bg-ink-950 p-4 text-xs text-white/80 shadow-inner">@BundleJson</pre>
+            }
+        </section>
+
+        @if (RecentRecords.Count > 0)
+        {
+            <section id="recent" class="scroll-mt-24 rounded-card border border-black/20 bg-surface p-4 shadow-card sm:p-5">
+                <h2 class="text-lg font-semibold tracking-tight text-ink-900">Recent captures</h2>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    @foreach (var record in RecentRecords)
+                    {
+                        <div class="rounded-2xl border border-black/20 bg-surface p-4">
+                            <div class="text-sm font-semibold text-ink-900">@record.CreatedAtUtc.ToLocalTime().ToString("g")</div>
+                            <div class="mt-1 text-sm text-ink-500">@(record.SubjectDisplay ?? record.SubjectReference ?? "Unknown subject")</div>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</div>
 @code {
     private string SubjectReference { get; set; } = string.Empty;
     private string SubjectDisplay { get; set; } = string.Empty;
@@ -679,7 +765,13 @@
 
                 if (RecordingSeconds >= MaxRecordingSeconds)
                 {
-                    await InvokeAsync(StopRecordingAsync);
+                    await InvokeAsync(async () =>
+                    {
+                        if (IsRecording)
+                        {
+                            await StopRecordingAsync();
+                        }
+                    });
                     return;
                 }
             }

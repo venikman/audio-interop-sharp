@@ -1,0 +1,134 @@
+@using AudioSharp.App.Models
+@using AudioSharp.App.Services
+@implements IDisposable
+@inject IAiUsageTelemetry AiUsageTelemetry
+
+<section class="rounded-card border border-black/20 bg-surface p-5 shadow-card">
+    <div class="text-[12px] font-semibold uppercase tracking-[0.3em] text-ink-500">AI Telemetry</div>
+    <div class="mt-4 space-y-3 text-[12px]">
+        <div class="rounded-xl border border-black/20 bg-surface-soft p-3">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">Audio</span>
+                <span class="rounded-full border border-black/20 bg-surface-soft px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">@FormatRate(Snapshot.Audio)</span>
+            </div>
+            <div class="mt-2 text-2xl font-semibold text-ink-900">@Snapshot.Audio.Total</div>
+            <div class="mt-1 text-[12px] text-ink-500">Success @Snapshot.Audio.Success | Fail @Snapshot.Audio.Failure</div>
+            <div class="mt-1 text-[12px] text-ink-500">Model: @FormatModel(Snapshot.Audio)</div>
+            <div class="mt-1 text-[12px] text-ink-500">Last: @FormatLast(Snapshot.Audio)</div>
+            <div class="mt-2 h-1.5 w-full rounded-full bg-surface-soft">
+                <span class="block h-1.5 rounded-full bg-brand-500"
+                      style="width: @(GetSuccessPercent(Snapshot.Audio))%"></span>
+            </div>
+        </div>
+        <div class="rounded-xl border border-black/20 bg-surface-soft p-3">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">Text</span>
+                <span class="rounded-full border border-black/20 bg-surface-soft px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">@FormatRate(Snapshot.Text)</span>
+            </div>
+            <div class="mt-2 text-2xl font-semibold text-ink-900">@Snapshot.Text.Total</div>
+            <div class="mt-1 text-[12px] text-ink-500">Success @Snapshot.Text.Success | Fail @Snapshot.Text.Failure</div>
+            <div class="mt-1 text-[12px] text-ink-500">Model: @FormatModel(Snapshot.Text)</div>
+            <div class="mt-1 text-[12px] text-ink-500">Last: @FormatLast(Snapshot.Text)</div>
+            <div class="mt-2 h-1.5 w-full rounded-full bg-surface-soft">
+                <span class="block h-1.5 rounded-full bg-brand-500"
+                      style="width: @(GetSuccessPercent(Snapshot.Text))%"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4 border-t border-black/20 pt-4 text-[12px]">
+        <div class="text-[12px] font-semibold uppercase tracking-[0.2em] text-ink-500">Recent</div>
+        @if (RecentEvents.Count == 0)
+        {
+            <div class="mt-2 text-[12px] text-ink-500">No events yet.</div>
+        }
+        else
+        {
+            @foreach (var telemetryEvent in RecentEvents)
+            {
+                <div class="mt-2 rounded-lg border border-black/20 bg-surface-soft px-3 py-2 text-[12px] text-ink-700 @(telemetryEvent.Success ? "border-l-4 border-emerald-400" : "border-l-4 border-rose-400")">
+                    @FormatEvent(telemetryEvent)
+                </div>
+            }
+        }
+    </div>
+</section>
+
+@code {
+    private AiUsageSnapshot Snapshot { get; set; } = AiUsageSnapshot.Empty;
+    private IReadOnlyList<AiTelemetryEvent> RecentEvents { get; set; } = [];
+
+    protected override void OnInitialized()
+    {
+        Snapshot = AiUsageTelemetry.GetSnapshot();
+        RecentEvents = AiUsageTelemetry.GetRecentEvents();
+        AiUsageTelemetry.Changed += OnTelemetryChanged;
+    }
+
+    private void OnTelemetryChanged()
+    {
+        Snapshot = AiUsageTelemetry.GetSnapshot();
+        RecentEvents = AiUsageTelemetry.GetRecentEvents();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static string FormatModel(UsageCounter counter)
+    {
+        if (string.IsNullOrWhiteSpace(counter.LastModel))
+        {
+            return "n/a";
+        }
+
+        var provider = string.IsNullOrWhiteSpace(counter.LastProvider) ? "unknown" : counter.LastProvider;
+        return $"{provider} / {counter.LastModel}";
+    }
+
+    private static string FormatLast(UsageCounter counter)
+    {
+        if (counter.LastAtUtc is null)
+        {
+            return "no activity yet";
+        }
+
+        var duration = counter.LastDuration.HasValue
+            ? $"{counter.LastDuration.Value.TotalMilliseconds:0} ms"
+            : "n/a";
+        var localTime = counter.LastAtUtc.Value.ToLocalTime().ToString("t");
+        return $"{duration} at {localTime}";
+    }
+
+    private static string FormatRate(UsageCounter counter)
+    {
+        if (counter.Total == 0)
+        {
+            return "0% ok";
+        }
+
+        var rate = GetSuccessPercent(counter);
+        return $"{rate}% ok";
+    }
+
+    private static int GetSuccessPercent(UsageCounter counter)
+    {
+        if (counter.Total == 0)
+        {
+            return 0;
+        }
+
+        var rate = (double)counter.Success / counter.Total;
+        return (int)Math.Round(rate * 100, MidpointRounding.AwayFromZero);
+    }
+
+    private static string FormatEvent(AiTelemetryEvent telemetryEvent)
+    {
+        var duration = $"{telemetryEvent.Duration.TotalMilliseconds:0} ms";
+        var time = telemetryEvent.OccurredAtUtc.ToLocalTime().ToString("t");
+        var status = telemetryEvent.Success ? "ok" : "fail";
+        return $"{telemetryEvent.Kind} {status} · {telemetryEvent.Provider} · {telemetryEvent.Model} · {duration} · {time}";
+    }
+
+    public void Dispose()
+    {
+        AiUsageTelemetry.Changed -= OnTelemetryChanged;
+    }
+}
